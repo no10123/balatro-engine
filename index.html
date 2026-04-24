@@ -2,19 +2,25 @@
 <html>
 <head>
     <title>Balatro Engine Host</title>
-    <style>body { margin: 0; background: black; overflow: hidden; }</style>
+    <style>body { margin: 0; background: black; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; color: white; font-family: sans-serif; }</style>
 </head>
 <body>
     <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
 
     <script type="text/javascript">
-        var Module = { canvas: document.getElementById('canvas') };
+        var Module = { 
+            canvas: document.getElementById('canvas'),
+            noInitialRun: true, // Tells the engine to WAIT and not auto-boot
+            onRuntimeInitialized: function() {
+                console.log("Engine is ready and waiting for the game file...");
+            }
+        };
 
         // THE CATCHER LOGIC
         window.addEventListener("message", function(event) {
             // Check if we received a game file (Blob)
             if (event.data instanceof Blob) {
-                console.log("Patch received! Starting game...");
+                console.log("Patch received! Writing to memory...");
                 
                 event.data.arrayBuffer().then(buffer => {
                     let data = new Uint8Array(buffer);
@@ -22,12 +28,12 @@
                     // Write the file to the virtual filesystem
                     FS.writeFile('game.love', data);
                     
-                    // Tell the engine to run the file we just received
+                    // Now that the file is in memory, press Play!
                     Module.callMain(['game.love']);
                 });
             }
         });
     </script>
-    <script async type="text/javascript" src="love.js"></script>
+    <script type="text/javascript" src="love.js"></script>
 </body>
 </html>
