@@ -5,10 +5,10 @@
     <style>
         body { margin: 0; background: black; overflow: hidden; color: white; font-family: monospace; }
         canvas { display: block; margin: 0 auto; height: 100vh; }
-        /* This creates a transparent text box over the top 30% of the screen */
         #debug-console { position: absolute; top: 0; left: 0; width: 100%; height: 30%; background: rgba(0,0,0,0.8); overflow-y: auto; padding: 10px; box-sizing: border-box; z-index: 999; border-bottom: 2px solid #444; pointer-events: none; text-shadow: 1px 1px 0 #000; }
-        .err { color: #ff5555; }
+        .err { color: #ff5555; font-weight: bold; }
         .warn { color: #ffff55; }
+        .good { color: #55ff55; }
     </style>
 </head>
 <body>
@@ -17,41 +17,75 @@
 
     <script type="text/javascript">
         const debugDiv = document.getElementById('debug-console');
-        
-        // Custom function to print text to the screen
         function logToScreen(msg, type = '') {
             const span = document.createElement('span');
             span.className = type;
             span.innerText = msg + '\n';
             debugDiv.appendChild(span);
             debugDiv.scrollTop = debugDiv.scrollHeight;
-            console.log(msg); // Keep standard log just in case
         }
 
-        // Hijack global errors
         window.onerror = function(msg) { logToScreen('GLOBAL ERROR: ' + msg, 'err'); };
 
-        // Emscripten setup
         var Module = { 
             canvas: document.getElementById('canvas'),
             noInitialRun: true,
-            // Emscripten uses print and printErr instead of console.log
             print: function(text) { logToScreen(text); },
             printErr: function(text) { logToScreen(text, 'err'); },
             onRuntimeInitialized: function() { 
-                logToScreen("WASM Engine initialized. Waiting for blob..."); 
+                logToScreen("WASM Engine initialized. Waiting for blob...", "good"); 
             }
         };
 
+        // --- THE FILE HEALTH CHECK ---
+        async function checkFiles() {
+            logToScreen("Running File Health Check...");
+            
+            try {
+                // 1. Check love.js
+                let jsRes = await fetch('love.js');
+                if (!jsRes.ok) throw new Error("love.js missing! (Error " + jsRes.status + ")");
+                let jsText = await jsRes.text();
+                
+                // If it starts with HTML, you downloaded a webpage!
+                if (jsText.trim().startsWith("<!DOCTYPE html>")) {
+                    logToScreen("CRITICAL ERROR: Your love.js is an HTML file! You fell for the 'Save As' trap.", "err");
+                    return;
+                }
+                logToScreen("love.js looks good (" + Math.round(jsText.length/1024) + " KB).", "good");
+
+                // 2. Check love.wasm
+                let wasmRes = await fetch('love.wasm');
+                if (!wasmRes.ok) throw new Error("love.wasm missing! (Error " + wasmRes.status + ")");
+                let wasmBlob = await wasmRes.blob();
+                
+                // If it's suspiciously small, it's probably also an HTML file
+                if (wasmBlob.size < 50000) { 
+                    logToScreen("CRITICAL ERROR: Your love.wasm is too small (" + Math.round(wasmBlob.size/1024) + " KB). It is probably an HTML file in disguise.", "err");
+                    return;
+                }
+                logToScreen("love.wasm looks good (" + Math.round(wasmBlob.size/1024) + " KB).", "good");
+
+                // If health check passes, inject the engine
+                logToScreen("Files verified. Booting engine...", "good");
+                let script = document.createElement('script');
+                script.src = "love.js";
+                document.body.appendChild(script);
+
+            } catch (e) {
+                logToScreen("HEALTH CHECK FAILED: " + e.message, "err");
+            }
+        }
+        
+        checkFiles();
+
         window.addEventListener("message", function(event) {
             if (event.data instanceof Blob) {
-                logToScreen("Received game blob from local patcher!");
-                
+                logToScreen("Received game blob from local patcher!", "good");
                 event.data.arrayBuffer().then(buffer => {
                     let data = new Uint8Array(buffer);
                     FS.writeFile('game.love', data);
-                    logToScreen("File saved to memory. Booting LÖVE...");
-                    
+                    logToScreen("File saved to memory. Pressing Play...");
                     try {
                         Module.callMain(['game.love']);
                     } catch(e) {
@@ -61,7 +95,5 @@
             }
         });
     </script>
-    <script type="text/javascript" src="love.js"></script>
-    <script type="text/javascript" src="love.js" onerror="logToScreen('CRITICAL: Could not find love.js! Check your GitHub files.', 'err')"></script>
 </body>
 </html>
