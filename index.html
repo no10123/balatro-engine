@@ -2,35 +2,62 @@
 <html>
 <head>
     <title>Balatro Engine Host</title>
-    <style>body { margin: 0; background: black; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; color: white; font-family: sans-serif; }</style>
+    <style>
+        body { margin: 0; background: black; overflow: hidden; color: white; font-family: monospace; }
+        canvas { display: block; margin: 0 auto; height: 100vh; }
+        /* This creates a transparent text box over the top 30% of the screen */
+        #debug-console { position: absolute; top: 0; left: 0; width: 100%; height: 30%; background: rgba(0,0,0,0.8); overflow-y: auto; padding: 10px; box-sizing: border-box; z-index: 999; border-bottom: 2px solid #444; pointer-events: none; text-shadow: 1px 1px 0 #000; }
+        .err { color: #ff5555; }
+        .warn { color: #ffff55; }
+    </style>
 </head>
 <body>
+    <div id="debug-console">--- Balatro Web Console ---<br></div>
     <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
 
     <script type="text/javascript">
+        const debugDiv = document.getElementById('debug-console');
+        
+        // Custom function to print text to the screen
+        function logToScreen(msg, type = '') {
+            const span = document.createElement('span');
+            span.className = type;
+            span.innerText = msg + '\n';
+            debugDiv.appendChild(span);
+            debugDiv.scrollTop = debugDiv.scrollHeight;
+            console.log(msg); // Keep standard log just in case
+        }
+
+        // Hijack global errors
+        window.onerror = function(msg) { logToScreen('GLOBAL ERROR: ' + msg, 'err'); };
+
+        // Emscripten setup
         var Module = { 
             canvas: document.getElementById('canvas'),
-            noInitialRun: true, // Tells the engine to WAIT and not auto-boot
-            onRuntimeInitialized: function() {
-                console.log("Engine is ready and waiting for the game file...");
+            noInitialRun: true,
+            // Emscripten uses print and printErr instead of console.log
+            print: function(text) { logToScreen(text); },
+            printErr: function(text) { logToScreen(text, 'err'); },
+            onRuntimeInitialized: function() { 
+                logToScreen("WASM Engine initialized. Waiting for blob..."); 
             }
         };
 
-        // THE CATCHER LOGIC
         window.addEventListener("message", function(event) {
-            // Check if we received a game file (Blob)
             if (event.data instanceof Blob) {
-                console.log("Patch received! Writing to memory...");
+                logToScreen("Received game blob from local patcher!");
                 
                 event.data.arrayBuffer().then(buffer => {
                     let data = new Uint8Array(buffer);
-                    
-                    // Write the file to the virtual filesystem
                     FS.writeFile('game.love', data);
+                    logToScreen("File saved to memory. Booting LÖVE...");
                     
-                    // Now that the file is in memory, press Play!
-                    Module.callMain(['game.love']);
-                });
+                    try {
+                        Module.callMain(['game.love']);
+                    } catch(e) {
+                        logToScreen("CRITICAL BOOT ERROR: " + e.message, 'err');
+                    }
+                }).catch(e => logToScreen("BUFFER ERROR: " + e.message, 'err'));
             }
         });
     </script>
