@@ -9,6 +9,7 @@
         .err { color: #ff5555; font-weight: bold; }
         .warn { color: #ffff55; }
         .good { color: #55ff55; }
+        .info { color: #88ccff; }
     </style>
 </head>
 <body>
@@ -25,21 +26,33 @@
             debugDiv.scrollTop = debugDiv.scrollHeight;
         }
 
+        // Catch normal errors
         window.onerror = function(msg) { logToScreen('GLOBAL ERROR: ' + msg, 'err'); };
+        
+        // Catch silent background crashes (WASM Memory/Network failures)
+        window.addEventListener('unhandledrejection', function(event) {
+            let errorMsg = event.reason.message || event.reason;
+            logToScreen('BACKGROUND CRASH DETECTED: ' + errorMsg, 'err');
+        });
 
-        // State variables to handle timing
         let engineReady = false;
         let pendingBlob = null;
 
         var Module = { 
             canvas: document.getElementById('canvas'),
             noInitialRun: true,
+            INITIAL_MEMORY: 134217728, // Force 128MB of RAM for Balatro
             print: function(text) { logToScreen(text); },
             printErr: function(text) { logToScreen(text, 'err'); },
+            
+            // X-Ray into the engine's boot process
+            setStatus: function(text) {
+                if (text) logToScreen("ENGINE STATUS: " + text, 'info');
+            },
+
             onRuntimeInitialized: function() { 
                 logToScreen("WASM Engine initialized. Ready to play!", "good"); 
                 engineReady = true;
-                // If a file was sent while we were booting, play it now!
                 if (pendingBlob) {
                     processGameFile(pendingBlob);
                     pendingBlob = null;
@@ -52,7 +65,6 @@
             blob.arrayBuffer().then(buffer => {
                 let data = new Uint8Array(buffer);
                 try {
-                    // Try to use Module.FS, fallback to global FS
                     let fileSystem = Module.FS || FS;
                     fileSystem.writeFile('game.love', data);
                     logToScreen("File saved! Pressing Play...", "good");
@@ -63,17 +75,14 @@
             }).catch(e => logToScreen("BUFFER ERROR: " + e.message, 'err'));
         }
 
-        // Boot the engine script
         logToScreen("Booting engine script...");
         let script = document.createElement('script');
         script.src = "love.js";
         document.body.appendChild(script);
 
-        // Listen for the Pitcher
         window.addEventListener("message", function(event) {
             if (event.data instanceof Blob) {
                 logToScreen("Received game blob from local patcher!", "good");
-                
                 if (engineReady) {
                     processGameFile(event.data);
                 } else {
