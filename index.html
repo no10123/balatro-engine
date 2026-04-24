@@ -1,92 +1,33 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Balatro Web Mod Patcher</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <style>
-        body { font-family: sans-serif; padding: 20px; background-color: #2b2b2b; color: white; }
-        .panel { background: #3d3d3d; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
-        input[type="file"] { margin: 10px 0; }
-        button { padding: 10px 15px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        button:hover { background: #45a049; }
-    </style>
+    <title>Balatro Engine Host</title>
+    <style>body { margin: 0; background: black; overflow: hidden; }</style>
 </head>
 <body>
+    <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
 
-    <h1>Balatro Web Mod Patcher</h1>
+    <script type="text/javascript">
+        var Module = { canvas: document.getElementById('canvas') };
 
-    <div class="panel">
-        <h3>1. Upload Base Game</h3>
-        <label>Select your core.love file:</label><br>
-        <input type="file" id="baseGameInput" accept=".love,.zip">
-    </div>
-
-    <div class="panel">
-        <h3>2. Upload Mods</h3>
-        <label>Select your Mod folder (can select multiple files):</label><br>
-        <input type="file" id="modFolderInput" webkitdirectory directory multiple>
-    </div>
-
-    <div class="panel">
-        <button id="patchButton">Patch & Play</button>
-        <p id="statusMessage">Status: Waiting for files...</p>
-    </div>
-
-    <div id="gameContainer" style="width: 800px; height: 600px; background: black; border: 2px solid #555; display: none;"></div>
-
-    <script>
-        // We will write our JSZip unpacking and patching logic here in Step 2
-        document.getElementById('patchButton').addEventListener('click', () => {
-            document.getElementById('statusMessage').innerText = "Status: Button clicked! Ready to write JSZip logic.";
-        });
-        // Listen for messages coming from the parent window (your local patcher)
+        // THE CATCHER LOGIC
         window.addEventListener("message", function(event) {
-            // 1. Verify we received a Blob (the zipped game file)
+            // Check if we received a game file (Blob)
             if (event.data instanceof Blob) {
-                console.log("Game Blob received from local patcher!");
+                console.log("Patch received! Starting game...");
                 
-                // 2. Convert the Blob into an ArrayBuffer for Emscripten
                 event.data.arrayBuffer().then(buffer => {
                     let data = new Uint8Array(buffer);
                     
-                    // 3. Write the file into Emscripten's virtual file system
+                    // Write the file to the virtual filesystem
                     FS.writeFile('game.love', data);
                     
-                    // 4. Boot the LÖVE engine targeting the newly injected file
+                    // Tell the engine to run the file we just received
                     Module.callMain(['game.love']);
                 });
             }
         });
     </script>
-                <div class="panel">
-        <iframe id="gameFrame" src="https://[your-username].github.io/balatro-engine/" width="800" height="600" style="border: 2px solid #555;"></iframe>
-    </div>
-    
-    <script>
-        document.getElementById('patchButton').addEventListener('click', async () => {
-            document.getElementById('statusMessage').innerText = "Status: Patching files...";
-            
-            // [JSZip extraction and RegEx patching logic will go here]
-            
-            // Once JSZip finishes patching, we generate the final file as a Blob
-            // For this example, pretend 'patchedZip' is the final JSZip object
-            // const blob = await patchedZip.generateAsync({type: "blob"});
-            
-            // For now, we will just simulate a successful patch with a dummy blob
-            const simulatedBlob = new Blob(["dummy game data"], {type: "application/zip"});
-            
-            document.getElementById('statusMessage').innerText = "Status: Sending to game engine...";
-            
-            // Grab the iframe and shoot the Blob into it using postMessage
-            const iframe = document.getElementById('gameFrame');
-            
-            // The '*' allows the local file to send data to the https:// domain
-            iframe.contentWindow.postMessage(simulatedBlob, "*"); 
-            
-            document.getElementById('statusMessage').innerText = "Status: Game running!";
-        });
-    </script>
+    <script async type="text/javascript" src="love.js"></script>
 </body>
 </html>
