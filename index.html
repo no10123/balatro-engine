@@ -27,71 +27,59 @@
 
         window.onerror = function(msg) { logToScreen('GLOBAL ERROR: ' + msg, 'err'); };
 
+        // State variables to handle timing
+        let engineReady = false;
+        let pendingBlob = null;
+
         var Module = { 
             canvas: document.getElementById('canvas'),
             noInitialRun: true,
             print: function(text) { logToScreen(text); },
             printErr: function(text) { logToScreen(text, 'err'); },
             onRuntimeInitialized: function() { 
-                logToScreen("WASM Engine initialized. Waiting for blob...", "good"); 
+                logToScreen("WASM Engine initialized. Ready to play!", "good"); 
+                engineReady = true;
+                // If a file was sent while we were booting, play it now!
+                if (pendingBlob) {
+                    processGameFile(pendingBlob);
+                    pendingBlob = null;
+                }
             }
         };
 
-        // --- THE FILE HEALTH CHECK ---
-        async function checkFiles() {
-            logToScreen("Running File Health Check...");
-            
-            try {
-                // 1. Check love.js
-                let jsRes = await fetch('love.js');
-                if (!jsRes.ok) throw new Error("love.js missing! (Error " + jsRes.status + ")");
-                let jsText = await jsRes.text();
-                
-                // If it starts with HTML, you downloaded a webpage!
-                if (jsText.trim().startsWith("<!DOCTYPE html>")) {
-                    logToScreen("CRITICAL ERROR: Your love.js is an HTML file! You fell for the 'Save As' trap.", "err");
-                    return;
+        function processGameFile(blob) {
+            logToScreen("Writing file to virtual memory...");
+            blob.arrayBuffer().then(buffer => {
+                let data = new Uint8Array(buffer);
+                try {
+                    // Try to use Module.FS, fallback to global FS
+                    let fileSystem = Module.FS || FS;
+                    fileSystem.writeFile('game.love', data);
+                    logToScreen("File saved! Pressing Play...", "good");
+                    Module.callMain(['game.love']);
+                } catch(e) {
+                    logToScreen("CRITICAL BOOT ERROR: " + e.message, 'err');
                 }
-                logToScreen("love.js looks good (" + Math.round(jsText.length/1024) + " KB).", "good");
-
-                // 2. Check love.wasm
-                let wasmRes = await fetch('love.wasm');
-                if (!wasmRes.ok) throw new Error("love.wasm missing! (Error " + wasmRes.status + ")");
-                let wasmBlob = await wasmRes.blob();
-                
-                // If it's suspiciously small, it's probably also an HTML file
-                if (wasmBlob.size < 50000) { 
-                    logToScreen("CRITICAL ERROR: Your love.wasm is too small (" + Math.round(wasmBlob.size/1024) + " KB). It is probably an HTML file in disguise.", "err");
-                    return;
-                }
-                logToScreen("love.wasm looks good (" + Math.round(wasmBlob.size/1024) + " KB).", "good");
-
-                // If health check passes, inject the engine
-                logToScreen("Files verified. Booting engine...", "good");
-                let script = document.createElement('script');
-                script.src = "love.js";
-                document.body.appendChild(script);
-
-            } catch (e) {
-                logToScreen("HEALTH CHECK FAILED: " + e.message, "err");
-            }
+            }).catch(e => logToScreen("BUFFER ERROR: " + e.message, 'err'));
         }
-        
-        checkFiles();
 
+        // Boot the engine script
+        logToScreen("Booting engine script...");
+        let script = document.createElement('script');
+        script.src = "love.js";
+        document.body.appendChild(script);
+
+        // Listen for the Pitcher
         window.addEventListener("message", function(event) {
             if (event.data instanceof Blob) {
                 logToScreen("Received game blob from local patcher!", "good");
-                event.data.arrayBuffer().then(buffer => {
-                    let data = new Uint8Array(buffer);
-                    FS.writeFile('game.love', data);
-                    logToScreen("File saved to memory. Pressing Play...");
-                    try {
-                        Module.callMain(['game.love']);
-                    } catch(e) {
-                        logToScreen("CRITICAL BOOT ERROR: " + e.message, 'err');
-                    }
-                }).catch(e => logToScreen("BUFFER ERROR: " + e.message, 'err'));
+                
+                if (engineReady) {
+                    processGameFile(event.data);
+                } else {
+                    logToScreen("Engine is still booting. Queuing file...", "warn");
+                    pendingBlob = event.data;
+                }
             }
         });
     </script>
