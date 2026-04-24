@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Balatro Local Patcher (local/)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #1a1a1a; color: #e0e0e0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .controls { background: #2d2d2d; padding: 20px; border-radius: 10px; border: 1px solid #444; width: 100%; max-width: 800px; margin-bottom: 20px; }
+        input { margin: 10px 0; display: block; }
+        button { background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #45a049; }
+        #statusMessage { font-family: monospace; color: #aaa; margin-top: 10px; }
+        iframe { width: 854px; height: 480px; border: 2px solid #555; background: #000; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <h2>Balatro Patcher (local/)</h2>
+        
+        <label>1. Select Base Game (core.love):</label>
+        <input type="file" id="baseGameInput" accept=".love">
+
+        <label>2. Select Mod Folder (e.g. Steamodded):</label>
+        <input type="file" id="modFolderInput" webkitdirectory directory multiple>
+
+        <button id="patchButton">Patch & Inject to web/</button>
+        <div id="statusMessage">Status: Waiting for files...</div>
+    </div>
+
+    <iframe id="gameFrame" src="https://no10123.github.io/balatro-engine/"></iframe>
+
+    <script>
+        const baseInput = document.getElementById('baseGameInput');
+        const modInput = document.getElementById('modFolderInput');
+        const patchButton = document.getElementById('patchButton');
+        const status = document.getElementById('statusMessage');
+        const iframe = document.getElementById('gameFrame');
+
+        patchButton.addEventListener('click', async () => {
+            if (!baseInput.files[0]) {
+                alert("Please select your core.love file first!");
+                return;
+            }
+
+            status.innerText = "Status: Reading base game...";
+            const zip = new JSZip();
+            
+            try {
+                // 1. Load the base .love file into JSZip
+                const baseFile = await baseInput.files[0].arrayBuffer();
+                const gameZip = await zip.loadAsync(baseFile);
+                
+                status.innerText = "Status: Unpacking mods...";
+                
+                // 2. Process Mod Files
+                const modFiles = Array.from(modInput.files);
+                
+                for (const file of modFiles) {
+                    // Logic for Steamodded: We use the relative path to preserve folder structure
+                    const relativePath = file.webkitRelativePath || file.name;
+                    const fileData = await file.arrayBuffer();
+                    
+                    // Inject the mod files into the virtual 'Mods/' directory
+                    gameZip.file("Mods/" + relativePath, fileData);
+                    console.log(`Injected: ${relativePath}`);
+                }
+
+                status.innerText = "Status: Patching Lua hooks...";
+
+                // 3. The "Lovely" Simulation (Injecting the loader)
+                let mainLua = await gameZip.file("main.lua").async("string");
+                
+                if (!mainLua.includes("require 'Mods/")) {
+                    // Prepend the loader requirement to the very top of main.lua
+                    const injection = "-- Injected by Web Patcher\nrequire 'Mods/Steamodded/loader'\n";
+                    mainLua = injection + mainLua;
+                    gameZip.file("main.lua", mainLua);
+                }
+
+                status.innerText = "Status: Repacking game...";
+
+                // 4. Generate the final Blob
+                const patchedBlob = await gameZip.generateAsync({
+                    type: "blob",
+                    compression: "STORE" 
+                });
+
+                status.innerText = "Status: Sending to GitHub Engine (web/)...";
+
+                // 5. Throw the ball to the Catcher (web/)
+                // We use '*' to allow cross-domain transfer to the GitHub frame
+                iframe.contentWindow.postMessage(patchedBlob, "*");
+
+                status.innerText = "Status: Game Running! (Check the iframe)";
+
+            } catch (err) {
+                console.error(err);
+                status.innerText = "Status: Error! " + err.message;
+            }
+        });
+    </script>
+</body>
+</html>
