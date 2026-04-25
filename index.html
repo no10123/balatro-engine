@@ -67,8 +67,6 @@
                 let data = new Uint8Array(buffer);
                 
                 try {
-                    // We don't need a loop here anymore, because this function 
-                    // is only ever called AFTER onRuntimeInitialized fires!
                     Module.FS.writeFile('game.love', data);
                     logToScreen("File saved! Pressing Play...", "good");
                     Module.callMain(['game.love']);
@@ -90,11 +88,8 @@
                 }
             }
         });
-        if (typeof window.love === 'function') {
-            window.love(Module);
-        }
     </script>
     
-    <script defer type="text/javascript" src="love.js" onerror="logToScreen('ERROR: Could not find love.js in the repository!', 'err')"></script>
+    <script type="text/javascript" src="love.js" onload="if(typeof window.love === 'function') { window.love(Module); logToScreen('Engine script loaded and triggered.', 'info'); } else { logToScreen('Engine script loaded, awaiting auto-boot...', 'info'); }" onerror="logToScreen('ERROR: Could not find love.js in the repository!', 'err')"></script>
 </body>
 </html>
