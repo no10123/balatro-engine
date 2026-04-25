@@ -62,16 +62,34 @@
 
         function processGameFile(blob) {
             logToScreen("Writing file to virtual memory...");
+            
             blob.arrayBuffer().then(buffer => {
                 let data = new Uint8Array(buffer);
-                try {
-                    let fileSystem = Module.FS || FS;
-                    fileSystem.writeFile('game.love', data);
-                    logToScreen("File saved! Pressing Play...", "good");
-                    Module.callMain(['game.love']);
-                } catch(e) {
-                    logToScreen("CRITICAL BOOT ERROR: " + e.message, 'err');
+                
+                // Create a looping check to wait for the File System
+                function attemptBoot() {
+                    // If the Engine or the File System isn't ready, wait and try again
+                    if (typeof Module === 'undefined' || !Module.FS) {
+                        console.log("Waiting for Engine FS to initialize...");
+                        setTimeout(attemptBoot, 500); // Check again in 500ms
+                        return;
+                    }
+
+                    // Once Module.FS exists, we are safe to write the file!
+                    try {
+                        Module.FS.writeFile('game.love', data);
+                        logToScreen("File saved! Pressing Play...", "good");
+                
+                        // Boot the game
+                        Module.callMain(['game.love']);
+                    } catch(e) {
+                        logToScreen("CRITICAL BOOT ERROR: " + e.message, 'err');
+                    }
                 }
+
+                // Start the check
+                attemptBoot();
+
             }).catch(e => logToScreen("BUFFER ERROR: " + e.message, 'err'));
         }
 
