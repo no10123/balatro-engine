@@ -26,26 +26,24 @@
             debugDiv.scrollTop = debugDiv.scrollHeight;
         }
 
-        // Catch normal errors
+        // Catch global errors
         window.onerror = function(msg) { logToScreen('GLOBAL ERROR: ' + msg, 'err'); };
-        
-        // Catch silent background crashes (WASM Memory/Network failures)
         window.addEventListener('unhandledrejection', function(event) {
-            let errorMsg = event.reason.message || event.reason;
+            let errorMsg = event.reason && event.reason.message ? event.reason.message : event.reason;
             logToScreen('BACKGROUND CRASH DETECTED: ' + errorMsg, 'err');
         });
 
         let engineReady = false;
         let pendingBlob = null;
 
+        // Configure the WASM Engine
         var Module = { 
+            arguments: ['./game.love'],
             canvas: document.getElementById('canvas'),
             noInitialRun: true,
-            INITIAL_MEMORY: 134217728, // Force 128MB of RAM for Balatro
             print: function(text) { logToScreen(text); },
             printErr: function(text) { logToScreen(text, 'err'); },
             
-            // X-Ray into the engine's boot process
             setStatus: function(text) {
                 if (text) logToScreen("ENGINE STATUS: " + text, 'info');
             },
@@ -53,6 +51,8 @@
             onRuntimeInitialized: function() { 
                 logToScreen("WASM Engine initialized. Ready to play!", "good"); 
                 engineReady = true;
+                
+                // If the patcher already threw the file at us, process it now
                 if (pendingBlob) {
                     processGameFile(pendingBlob);
                     pendingBlob = null;
@@ -66,38 +66,19 @@
             blob.arrayBuffer().then(buffer => {
                 let data = new Uint8Array(buffer);
                 
-                // Create a looping check to wait for the File System
-                function attemptBoot() {
-                    // If the Engine or the File System isn't ready, wait and try again
-                    if (typeof Module === 'undefined' || !Module.FS) {
-                        console.log("Waiting for Engine FS to initialize...");
-                        setTimeout(attemptBoot, 500); // Check again in 500ms
-                        return;
-                    }
-
-                    // Once Module.FS exists, we are safe to write the file!
-                    try {
-                        Module.FS.writeFile('game.love', data);
-                        logToScreen("File saved! Pressing Play...", "good");
-                
-                        // Boot the game
-                        Module.callMain(['game.love']);
-                    } catch(e) {
-                        logToScreen("CRITICAL BOOT ERROR: " + e.message, 'err');
-                    }
+                try {
+                    // We don't need a loop here anymore, because this function 
+                    // is only ever called AFTER onRuntimeInitialized fires!
+                    Module.FS.writeFile('game.love', data);
+                    logToScreen("File saved! Pressing Play...", "good");
+                    Module.callMain(['game.love']);
+                } catch(e) {
+                    logToScreen("CRITICAL BOOT ERROR: " + e.message, 'err');
                 }
-
-                // Start the check
-                attemptBoot();
-
             }).catch(e => logToScreen("BUFFER ERROR: " + e.message, 'err'));
         }
 
-        logToScreen("Booting engine script...");
-        let script = document.createElement('script');
-        script.src = "love.js";
-        document.body.appendChild(script);
-
+        // Listen for the file from your local Patcher
         window.addEventListener("message", function(event) {
             if (event.data instanceof Blob) {
                 logToScreen("Received game blob from local patcher!", "good");
@@ -110,5 +91,7 @@
             }
         });
     </script>
+    
+    <script async type="text/javascript" src="love.js"></script>
 </body>
 </html>
