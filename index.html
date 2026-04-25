@@ -90,6 +90,17 @@
         });
     </script>
     
-    <script type="text/javascript" src="love.js" onload="if(typeof window.love === 'function') { window.love(Module); logToScreen('Engine script loaded and triggered.', 'info'); } else { logToScreen('Engine script loaded, awaiting auto-boot...', 'info'); }" onerror="logToScreen('ERROR: Could not find love.js in the repository!', 'err')"></script>
+    <script type="text/javascript" src="love.js" onload="
+        window.Module = Module; // Ensure it's globally available
+        if (typeof window.Love === 'function') { 
+            window.Love(Module); 
+            logToScreen('Engine triggered with Capital L (Love)', 'info'); 
+        } else if (typeof window.love === 'function') { 
+            window.love(Module); 
+            logToScreen('Engine triggered with lowercase l (love)', 'info'); 
+        } else { 
+            logToScreen('Engine loaded. Awaiting global auto-boot...', 'info'); 
+        }
+    " onerror="logToScreen('ERROR: Could not find love.js in the repository!', 'err')"></script>
 </body>
 </html>
