@@ -90,6 +90,9 @@
                 }
             }
         });
+        if (typeof window.love === 'function') {
+            window.love(Module);
+        }
     </script>
     
     <script defer type="text/javascript" src="love.js" onerror="logToScreen('ERROR: Could not find love.js in the repository!', 'err')"></script>
